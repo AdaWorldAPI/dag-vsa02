@@ -1,6 +1,6 @@
 """
-VSA02 — Warm Replica (vsa02.msgraph.de)
-=======================================
+VSA02 — Warm Replica (dag-vsa02.msgraph.de)
+===========================================
 4-node LanceDB DAG. 30s lag from AGI. Cascades to vsa03.
 """
 import os, json, asyncio
@@ -21,7 +21,7 @@ except:
 
 LANCE_PATH = os.getenv("LANCE_DB_PATH", "/data/lancedb")
 NODE_ID = "vsa02"
-VSA03 = "https://vsa03.msgraph.de"
+VSA03 = "https://dag-vsa03.msgraph.de"  # Fixed domain
 db = None
 
 class Vec10k(BaseModel):
@@ -49,7 +49,9 @@ async def cascade(id: str, vec: List[float], meta: Dict):
     try:
         async with httpx.AsyncClient() as c:
             await c.post(f"{VSA03}/vectors/upsert", json={"id": id, "vector": vec, "metadata": meta, "cascade": False}, timeout=30)
-    except: pass
+            print(f"[{NODE_ID}] Cascaded {id} to vsa03")
+    except Exception as e:
+        print(f"[{NODE_ID}] Cascade failed: {e}")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -61,7 +63,7 @@ app = FastAPI(title=f"DAG {NODE_ID}", lifespan=lifespan)
 @app.get("/health")
 async def health():
     n = db.open_table("vec10k").count_rows() if db and "vec10k" in db.table_names() else 0
-    return {"node": NODE_ID, "role": "warm", "lag_ms": 30000, "cascade_to": "vsa03", "vectors": n, "ok": True}
+    return {"node": NODE_ID, "role": "warm", "lag_ms": 30000, "cascade_to": "dag-vsa03", "vectors": n, "ok": True}
 
 @app.post("/vectors/upsert")
 async def upsert(req: Vec10k):
